@@ -17,7 +17,8 @@ Expression:     1+2
 WASM Text:      i32.const 1
                 i32.const 2
                 i32.add
-Evaluation:     3
+Text result:    3
+Binary result:  3
 
 Expression:     1+$x*3
 WASM Text:      i32.const 1
@@ -25,7 +26,8 @@ WASM Text:      i32.const 1
                 i32.const 3
                 i32.mul
                 i32.add
-Evaluation:     22
+Text result:    22
+Binary result:  22
 
 Expression:     ($x+4)*2
 WASM Text:      local.get $x
@@ -33,7 +35,8 @@ WASM Text:      local.get $x
                 i32.add
                 i32.const 2
                 i32.mul
-Evaluation:     22
+Text result:    22
+Binary result:  22
 
 Expression:     ($x*$x-10)/3
 WASM Text:      local.get $x
@@ -43,5 +46,6 @@ WASM Text:      local.get $x
                 i32.sub
                 i32.const 3
                 i32.div_u
-Evaluation:     13
+Text result:    13
+Binary result:  13
 ```
