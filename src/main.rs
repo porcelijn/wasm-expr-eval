@@ -81,7 +81,15 @@ impl Factor {
     fn parse(i: &mut Peekable<impl Iterator<Item = char>>) -> Self {
         let c = i.next().expect("out of tokens, exected Factor");
         match c {
-            '0'..='9' => Self::Const(c.to_digit(10).unwrap() as i32),
+            '0'..='9' => {
+                let mut v = c.to_digit(10).unwrap() as i32;
+                while let Some(&c) = i.peek() {
+                    if !('0'..='9').contains(&c) { break; }
+                    i.next();
+                    v = v * 10 + c.to_digit(10).unwrap() as i32;
+                }
+                Self::Const(v)
+            },
             '$' => {
                 let c = i.next().expect("out of tokens, expected [a-z]");
                 assert!(('a'..='z').contains(&c));
@@ -132,13 +140,14 @@ fn test_parse() {
         let expr = Expr::parse(&mut s.chars().peekable());
         expr.to_wat().replace('\n', " ")
     }
-    assert_eq!(compile("1"), "i32.const 1");
+    assert_eq!(compile("0001"), "i32.const 1");
     assert_eq!(compile("2+3"), "i32.const 2 i32.const 3 i32.add");
     assert_eq!(compile("2*3"), "i32.const 2 i32.const 3 i32.mul");
     assert_eq!(compile("1+2*3"), "i32.const 1 i32.const 2 i32.const 3 i32.mul i32.add");
     assert_eq!(compile("1*2+3"), "i32.const 1 i32.const 2 i32.mul i32.const 3 i32.add");
     assert_eq!(compile("(1+2)*3"), "i32.const 1 i32.const 2 i32.add i32.const 3 i32.mul");
     assert_eq!(compile("1+$x"), "i32.const 1 local.get $x i32.add");
+    assert_eq!(compile("123/$x"), "i32.const 123 local.get $x i32.div_u");
 }
 
 #[test]
@@ -155,6 +164,7 @@ fn test_eval() {
     assert_eq!(evaluate("(($x))"), 7);
     assert_eq!(evaluate("0-$x"), -7);
     assert_eq!(evaluate("2+2*9/3-1"), 7);
+    assert_eq!(evaluate("100/3"), 33);
 }
 
 fn add_fluff(expr_wat: &str) -> String {
