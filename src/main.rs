@@ -153,7 +153,7 @@ impl Factor {
         match &self {
             Self::Const(c) => {
                 let mut out = vec![0x41]; // i32.const
-                write_leb128(*c, &mut out);
+                write_leb128((*c).into(), &mut out);
                 out
             },
             Self::Param(p) => {
@@ -167,13 +167,13 @@ impl Factor {
     }
 }
 
-fn write_leb128(mut i: i32, out: &mut Vec<u8>) {
+fn write_leb128(mut i: i128, out: &mut Vec<u8>) {
     const MORE: u8 = 1 << 7;
     const SIGN: u8 = 1 << 6;
     const DATA: u8 = !MORE;
     loop {
-        let byte = (i & DATA as i32) as u8;
-        let has_sign = byte & SIGN != 0;
+        let byte = (i & DATA as i128) as u8;
+        let has_sign = (byte & SIGN) != 0;
         i >>= 7;
         if (i == 0 && !has_sign) || (i == -1 && has_sign) {
             out.push(byte);
@@ -185,9 +185,13 @@ fn write_leb128(mut i: i32, out: &mut Vec<u8>) {
 
 #[test]
 fn test_write_leb128() {
+    // examples from wikipedia:
     let mut out = Vec::new();
     write_leb128(624485, &mut out);
-    assert_eq!(out, &[0xE5, 0x8E, 0x26]); // from wikipedia
+    assert_eq!(out, &[0xE5, 0x8E, 0x26]);
+    out.clear();
+    write_leb128(-123456, &mut out);
+    assert_eq!(out, &[0xC0, 0xBB, 0x78]);
 }
 
 #[test]
@@ -287,9 +291,8 @@ fn eval_wat(expr: &Expr) -> Result<i32> {
 }
 
 fn make_func(body: &[u8]) -> Vec<u8> {
-    let size: i32 = body.len().try_into().unwrap();
     let mut out = Vec::new();
-    write_leb128(size, &mut out);
+    write_leb128(body.len() as i128, &mut out);
     out.extend(body);
     out
 }
