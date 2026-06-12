@@ -1,0 +1,7 @@
+[package]
+name = "wasm-expr-eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wasmtime = "44.0.2"
