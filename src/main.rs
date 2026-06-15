@@ -126,10 +126,8 @@ impl Factor {
                 }
                 Self::Const(v)
             },
-            '$' => {
-                let c = i.next().expect("out of tokens, expected [a-z]");
-                assert!(('a'..='z').contains(&c));
-                Self::Param("$".to_string() + &c.to_string())
+            'a'..='z' => {
+                Self::Param(c.to_string())
             },
             '(' => {
                 let expr = Expr::parse(i);
@@ -144,7 +142,7 @@ impl Factor {
     fn to_wat(&self) -> String {
         match &self {
             Self::Const(c) => format!("i32.const {c}"),
-            Self::Param(p) => format!("local.get {p}"),
+            Self::Param(p) => format!("local.get ${p}"),
             Self::Expr(e) => e.to_wat(),
         }
     }
@@ -158,7 +156,7 @@ impl Factor {
             },
             Self::Param(p) => {
                 let mut out = vec![0x20]; // local.get
-                assert_eq!(p, "$x"); // FIXME
+                assert_eq!(p, "x"); // FIXME
                 out.push(0); // first param
                 out
             },
@@ -208,7 +206,7 @@ i32.add"#;
             )))))),
             Box::new(Term::Factor(Box::new(Factor::Const(2)))),
         )),
-        Box::new(Term::Factor(Box::new(Factor::Param("$x".to_string())))),
+        Box::new(Term::Factor(Box::new(Factor::Param("x".to_string())))),
     );
     assert_eq!(expr.to_wat(), expected);
 }
@@ -226,8 +224,8 @@ fn test_parse() {
     assert_eq!(compile("1+2*3"), "i32.const 1 i32.const 2 i32.const 3 i32.mul i32.add");
     assert_eq!(compile("1*2+3"), "i32.const 1 i32.const 2 i32.mul i32.const 3 i32.add");
     assert_eq!(compile("(1+2)*3"), "i32.const 1 i32.const 2 i32.add i32.const 3 i32.mul");
-    assert_eq!(compile("1+$x"), "i32.const 1 local.get $x i32.add");
-    assert_eq!(compile("123/$x"), "i32.const 123 local.get $x i32.div_u");
+    assert_eq!(compile("1+x"), "i32.const 1 local.get $x i32.add");
+    assert_eq!(compile("123/x"), "i32.const 123 local.get $x i32.div_u");
 }
 
 #[test]
@@ -240,10 +238,10 @@ fn test_eval() {
     }
     assert_eq!(evaluate("1+2+3+4+5+6+7+8+9"), 45);
     assert_eq!(evaluate("1*2*3*4*5*6*7*8*9"), 362880);
-    assert_eq!(evaluate("0*$x"), 0);
-    assert_eq!(evaluate("$x-$x"), 0);
-    assert_eq!(evaluate("(($x))"), 7);
-    assert_eq!(evaluate("0-$x"), -7);
+    assert_eq!(evaluate("0*x"), 0);
+    assert_eq!(evaluate("x-x"), 0);
+    assert_eq!(evaluate("((x))"), 7);
+    assert_eq!(evaluate("0-x"), -7);
     assert_eq!(evaluate("2+2*9/3-1"), 7);
     assert_eq!(evaluate("100"), 100);
     assert_eq!(evaluate("100/3"), 33);

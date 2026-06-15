@@ -6,7 +6,7 @@ A minimalist experiment messing around with WASM code generation and expression 
 
 ```bash
 cargo build
-cargo run -- '1+2' '1+$x*3' '($x+4)*2' '($x*$x-10)/3'
+cargo run -- '1+2' '1+x*3' '(x+4)*2' '(x*x-10)/3'
 
 ```
 
@@ -20,7 +20,7 @@ WASM Text:      i32.const 1
 Text result:    3
 Binary result:  3
 
-Expression:     1+$x*3
+Expression:     1+x*3
 WASM Text:      i32.const 1
                 local.get $x
                 i32.const 3
@@ -29,7 +29,7 @@ WASM Text:      i32.const 1
 Text result:    22
 Binary result:  22
 
-Expression:     ($x+4)*2
+Expression:     (x+4)*2
 WASM Text:      local.get $x
                 i32.const 4
                 i32.add
@@ -38,7 +38,7 @@ WASM Text:      local.get $x
 Text result:    22
 Binary result:  22
 
-Expression:     ($x*$x-10)/3
+Expression:     (x*x-10)/3
 WASM Text:      local.get $x
                 local.get $x
                 i32.mul
