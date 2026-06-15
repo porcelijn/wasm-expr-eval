@@ -6,7 +6,7 @@ A minimalist experiment messing around with WASM code generation and expression 
 
 ```bash
 cargo build
-cargo run -- '1+2' '1+x*3' '(x+4)*2' '(x*x-10)/3'
+cargo run -- '1+2' '1+x*3' '(x+4) * 2' '(x*x - 10)/3'
 
 ```
 

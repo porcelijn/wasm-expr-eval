@@ -178,6 +178,9 @@ impl<'a> Tokenizer<'a> {
 impl<'a> Iterator for Tokenizer<'a> {
     type Item = Token;
     fn next(&mut self) -> Option<Token> {
+        while let Some(' ') = self.chars.peek() {
+            self.chars.next();
+        }
         if let Some(c) = self.chars.next() {
             let token = match c {
                 '0'..='9' => {
@@ -221,6 +224,9 @@ fn test_tokenizer() {
     let ts: Vec<_> = Tokenizer::from_str("(+-*/a1)").collect();
     assert_eq!(ts, [Open('('), Operator('+'), Operator('-'), Operator('*'),
                     Operator('/'), Variable("a".into()), Number(1), Close(')')]);
+    let ts: Vec<_> = Tokenizer::from_str("ab xy 12 34l").collect();
+    assert_eq!(ts, [Variable("ab".into()), Variable("xy".into()),
+                    Number(12), Number(34), Variable("l".into())]);
 }
 
 fn write_leb128(mut i: i128, out: &mut Vec<u8>) {
@@ -277,7 +283,7 @@ fn test_parse() {
         expr.to_wat().replace('\n', " ")
     }
     assert_eq!(compile("0001"), "i32.const 1");
-    assert_eq!(compile("2+3"), "i32.const 2 i32.const 3 i32.add");
+    assert_eq!(compile("2 + 3"), "i32.const 2 i32.const 3 i32.add");
     assert_eq!(compile("2*3"), "i32.const 2 i32.const 3 i32.mul");
     assert_eq!(compile("1+2*3"), "i32.const 1 i32.const 2 i32.const 3 i32.mul i32.add");
     assert_eq!(compile("1*2+3"), "i32.const 1 i32.const 2 i32.mul i32.const 3 i32.add");
