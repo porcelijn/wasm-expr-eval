@@ -127,8 +127,14 @@ impl Factor {
                 Self::Const(v)
             },
             'a'..='z' => {
-                Self::Param(c.to_string())
-            },
+                let mut v = c.to_string();
+                while let Some(&c) = i.peek() {
+                    if !('a'..='z').contains(&c) { break; }
+                    i.next();
+                    v += &c.to_string();
+                }
+                Self::Param(v)
+             },
             '(' => {
                 let expr = Expr::parse(i);
                 let c = i.next().expect("out of tokens, expected ')'");
@@ -226,6 +232,7 @@ fn test_parse() {
     assert_eq!(compile("(1+2)*3"), "i32.const 1 i32.const 2 i32.add i32.const 3 i32.mul");
     assert_eq!(compile("1+x"), "i32.const 1 local.get $x i32.add");
     assert_eq!(compile("123/x"), "i32.const 123 local.get $x i32.div_u");
+    assert_eq!(compile("variable"), "local.get $variable");
 }
 
 #[test]
