@@ -14,6 +14,7 @@ With `$x = 7` currently hard-code, we get:
 
 ```
 Expression:     1+2
+Tokenized:      [Number(1), Operator('+'), Number(2)]
 WASM Text:      i32.const 1
                 i32.const 2
                 i32.add
@@ -21,6 +22,7 @@ Text result:    3
 Binary result:  3
 
 Expression:     1+x*3
+Tokenized:      [Number(1), Operator('+'), Variable("x"), Operator('*'), Number(3)]
 WASM Text:      i32.const 1
                 local.get $x
                 i32.const 3
@@ -30,6 +32,7 @@ Text result:    22
 Binary result:  22
 
 Expression:     (x+4)*2
+Tokenized:      [Open('('), Variable("x"), Operator('+'), Number(4), Close(')'), Operator('*'), Number(2)]
 WASM Text:      local.get $x
                 i32.const 4
                 i32.add
@@ -39,6 +42,7 @@ Text result:    22
 Binary result:  22
 
 Expression:     (x*x-10)/3
+Tokenized:      [Open('('), Variable("x"), Operator('*'), Variable("x"), Operator('-'), Number(10), Close(')'), Operator('/'), Number(3)]
 WASM Text:      local.get $x
                 local.get $x
                 i32.mul
