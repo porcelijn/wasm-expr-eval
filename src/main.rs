@@ -9,15 +9,15 @@ enum Expr {
 }
 
 impl Expr {
-    fn parse(i: &mut Peekable<impl Iterator<Item = char>>) -> Self {
+    fn parse(i: &mut Peekable<impl Iterator<Item = Token>>) -> Self {
         let mut term = Self::Term(Box::new(Term::parse(i)));
         loop {
             match i.peek() {
-                Some('+') => {
+                Some(Token::Operator('+')) => {
                     i.next();
                     term = Self::Add(Box::new(term), Box::new(Term::parse(i)));
                 },
-                Some('-') => {
+                Some(Token::Operator('-')) => {
                     i.next();
                     term = Self::Subtract(Box::new(term), Box::new(Term::parse(i)));
                 },
@@ -61,16 +61,16 @@ enum Term {
 }
 
 impl Term {
-    fn parse(i: &mut Peekable<impl Iterator<Item = char>>) -> Self {
+    fn parse(i: &mut Peekable<impl Iterator<Item = Token>>) -> Self {
         let mut factor = Self::Factor(Box::new(Factor::parse(i)));
         loop {
             match i.peek() {
-                Some('*') => {
+                Some(Token::Operator('*')) => {
                     i.next();
                     factor = Self::Multiply(Box::new(factor),
                                             Box::new(Factor::parse(i)));
                 },
-                Some('/') => {
+                Some(Token::Operator('/')) => {
                     i.next();
                     factor = Self::Divide(Box::new(factor),
                                           Box::new(Factor::parse(i)));
@@ -115,34 +115,18 @@ enum Factor {
 }
 
 impl Factor {
-    fn parse(i: &mut Peekable<impl Iterator<Item = char>>) -> Self {
-        let c = i.next().expect("out of tokens, exected Factor");
-        match c {
-            '0'..='9' => {
-                let mut v = c.to_digit(10).unwrap() as i32;
-                while let Some(&c) = i.peek() {
-                    if !('0'..='9').contains(&c) { break; }
-                    i.next();
-                    v = v * 10 + c.to_digit(10).unwrap() as i32;
-                }
-                Self::Const(v)
-            },
-            'a'..='z' => {
-                let mut v = c.to_string();
-                while let Some(&c) = i.peek() {
-                    if !('a'..='z').contains(&c) { break; }
-                    i.next();
-                    v += &c.to_string();
-                }
-                Self::Param(v)
-            },
-            '(' => {
+    fn parse(i: &mut Peekable<impl Iterator<Item = Token>>) -> Self {
+        let token = i.next().expect("out of tokens, exected Factor");
+        match token {
+            Token::Number(n) => Self::Const(n),
+            Token::Variable(v) => Self::Param(v),
+            Token::Open('(') => {
                 let expr = Expr::parse(i);
                 let c = i.next().expect("out of tokens, expected ')'");
-                assert_eq!(c, ')');
+                assert_eq!(c, Token::Close(')'));
                 Self::Expr(Box::new(expr))
             },
-            _ => panic!("Invalid token for Factor: '{c}'"),
+            _ => panic!("Invalid token for Factor: '{token:?}'"),
         }
     }
 
@@ -289,7 +273,7 @@ i32.add"#;
 #[test]
 fn test_parse() {
     fn compile(s: &str) -> String {
-        let expr = Expr::parse(&mut s.chars().peekable());
+        let expr = Expr::parse(&mut Tokenizer::from_str(s).peekable());
         expr.to_wat().replace('\n', " ")
     }
     assert_eq!(compile("0001"), "i32.const 1");
@@ -306,7 +290,7 @@ fn test_parse() {
 #[test]
 fn test_eval() {
     fn evaluate(s: &str) -> i32 {
-        let expr = Expr::parse(&mut s.chars().peekable());
+        let expr = Expr::parse(&mut Tokenizer::from_str(s).peekable());
         eprintln!("{}", expr.to_wat());
         // eval_wat(&expr).expect("Failed to evaluate")
         eval_wasm(&expr).expect("Failed to evaluate")
@@ -436,7 +420,7 @@ fn main() -> Result<()> {
         println!("Expression:\t{arg}");
         let tokens: Vec<_> = Tokenizer::from_str(&arg).collect();
         println!("Tokenized:\t{tokens:?}");
-        let expr = Expr::parse(&mut arg.chars().peekable());
+        let expr = Expr::parse(&mut tokens.into_iter().peekable());
         println!("WASM Text:\t{}", expr.to_wat().replace('\n', "\n\t\t"));
         let result = eval_wat(&expr)?;
         println!("Text result:\t{result}");
