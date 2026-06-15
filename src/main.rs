@@ -1,7 +1,7 @@
 mod ast;
 mod token;
 
-use crate::ast::{Expr, add_fluff, generate_wasm};
+use crate::ast::{Expr, add_fluff, Bindings, generate_wasm};
 use crate::token::Tokenizer;
 
 use wasmtime::{Caller, Engine, Func, Instance, Module, Result, Store};
@@ -47,7 +47,8 @@ fn eval_wat(expr: &Expr) -> Result<i32> {
 }
 
 fn eval_wasm(expr: &Expr) -> Result<i32>{
-    let wasm = generate_wasm(expr);
+    let bindings: &Bindings = &[ "x".to_string(), "yy".to_string() ];
+    let wasm = generate_wasm(expr, bindings);
     let engine = Engine::default();
     let module = Module::new(&engine, wasm)?;
 

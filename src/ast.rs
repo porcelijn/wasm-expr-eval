@@ -4,6 +4,14 @@ use crate::token::Tokenizer;
 
 use std::iter::Peekable;
 
+pub type Bindings = [String]; // vars
+pub type Wat = String;
+pub type Wasm = Vec<u8>;
+
+pub trait ToWasm {
+    fn to_wasm(&self, bindings: &Bindings) -> Wasm;
+}
+
 pub(crate) enum Expr {
     Add(Box<Expr>, Box<Term>),
     Subtract(Box<Expr>, Box<Term>),
@@ -29,29 +37,31 @@ impl Expr {
         term
     }
 
-    pub fn to_wat(&self) -> String {
+    pub fn to_wat(&self) -> Wat {
         match &self {
             Self::Add(l, r) => format!("{}\n{}\ni32.add", l.to_wat(), r.to_wat()),
             Self::Subtract(l, r) => format!("{}\n{}\ni32.sub", l.to_wat(), r.to_wat()),
             Self::Term(t) => t.to_wat(),
         }
     }
+}
 
-    fn to_wasm(&self) -> Vec<u8> {
+impl ToWasm for Expr {
+    fn to_wasm(&self, bindings: &Bindings) -> Wasm {
         match &self {
             Self::Add(l, r) => {
-                let mut out = l.to_wasm();
-                out.extend(&r.to_wasm());
+                let mut out = l.to_wasm(bindings);
+                out.extend(&r.to_wasm(bindings));
                 out.push(0x6a); // i32.add
                 out
             },
             Self::Subtract(l, r) => {
-                let mut out = l.to_wasm();
-                out.extend(&r.to_wasm());
+                let mut out = l.to_wasm(bindings);
+                out.extend(&r.to_wasm(bindings));
                 out.push(0x6b); // i32.sub
                 out
             },
-            Self::Term(t) => t.to_wasm(),
+            Self::Term(t) => t.to_wasm(bindings),
         }
     }
 }
@@ -83,29 +93,31 @@ impl Term {
         factor
     }
 
-    fn to_wat(&self) -> String {
+    fn to_wat(&self) -> Wat {
         match &self {
             Self::Multiply(l, r) => format!("{}\n{}\ni32.mul", l.to_wat(), r.to_wat()),
             Self::Divide(l, r) => format!("{}\n{}\ni32.div_u", l.to_wat(), r.to_wat()),
             Self::Factor(f) => f.to_wat(),
         }
     }
+}
 
-    fn to_wasm(&self) -> Vec<u8> {
+impl ToWasm for Term {
+    fn to_wasm(&self, bindings: &Bindings) -> Wasm {
         match &self {
             Self::Multiply(l, r) => {
-                let mut out = l.to_wasm();
-                out.extend(&r.to_wasm());
+                let mut out = l.to_wasm(bindings);
+                out.extend(&r.to_wasm(bindings));
                 out.push(0x6c); // i32.mul
                 out
             },
             Self::Divide(l, r) => {
-                let mut out = l.to_wasm();
-                out.extend(&r.to_wasm());
+                let mut out = l.to_wasm(bindings);
+                out.extend(&r.to_wasm(bindings));
                 out.push(0x6e); // i32.div_u
                 out
             },
-            Self::Factor(f) => f.to_wasm(),
+            Self::Factor(f) => f.to_wasm(bindings),
         }
     }
 }
@@ -132,15 +144,17 @@ impl Factor {
         }
     }
 
-    fn to_wat(&self) -> String {
+    fn to_wat(&self) -> Wat {
         match &self {
             Self::Const(c) => format!("i32.const {c}"),
             Self::Param(p) => format!("local.get ${p}"),
             Self::Expr(e) => e.to_wat(),
         }
     }
+}
 
-    fn to_wasm(&self) -> Vec<u8> {
+impl ToWasm for Factor {
+    fn to_wasm(&self, bindings: &Bindings) -> Wasm {
         match &self {
             Self::Const(c) => {
                 let mut out = vec![0x41]; // i32.const
@@ -149,11 +163,14 @@ impl Factor {
             },
             Self::Param(p) => {
                 let mut out = vec![0x20]; // local.get
-                assert_eq!(p, "x"); // FIXME
-                out.push(0); // first param
+                if let Some(index) = bindings.iter().position(|b| b == p) {
+                    write_leb128(index as i128, &mut out);
+                } else {
+                    panic!("Unknown binding for local '{p}'");
+                }
                 out
             },
-            Self::Expr(e) => e.to_wasm(),
+            Self::Expr(e) => e.to_wasm(bindings),
         }
     }
 }
@@ -230,11 +247,12 @@ pub fn add_fluff(expr_wat: &str) -> String {
                 call $host_log
 
                 i32.const 7 ;; <-- WASM function param `$x`
+                i32.const 9 ;; <-- WASM function param `$yy`
                 call $eval_expr
                 return)
     "#.to_string();
 
-    wat.push_str("(func $eval_expr (param $x i32) (result i32)");
+    wat.push_str("(func $eval_expr (param $x i32) (param $yy i32) (result i32)");
     wat.push_str(expr_wat);
     wat.push_str(" return)");
     wat.push_str(")");
@@ -248,31 +266,90 @@ fn make_func(body: &[u8]) -> Vec<u8> {
     out
 }
 
-fn make_code_section(functions: &[&[u8]]) -> Vec<u8> {
-    let function_count = functions.len();
-    let code_section_size = 1 + functions.iter().map(|v|v.len()).sum::<usize>();
+const SIGNATURE_TYPE: u8 = 0x01; // function signatures
+const SIGNATURE_CODE: u8 = 0x0a; // function bodies, locals and opcodes
+
+fn make_section<const SIGNATURE: u8>(payloads: &[&[u8]]) -> Vec<u8> {
+    let count = payloads.len();
+    assert!(count < 63); // FIXME assume 1 byte for leb128; might overflow
+    let payload_size = 1 + payloads.iter().map(|v|v.len()).sum::<usize>();
     let mut out = Vec::new();
-    write_leb128(code_section_size.try_into().unwrap(), &mut out);
-    write_leb128(function_count.try_into().unwrap(), &mut out);
-    for &function in functions {
+    out.push(SIGNATURE);
+    write_leb128(payload_size.try_into().unwrap(), &mut out);
+    write_leb128(count.try_into().unwrap(), &mut out);
+    for &function in payloads {
         out.extend(function);
     }
-    out 
+    out
 }
 
-pub fn generate_wasm(expr: &Expr) -> Vec<u8> {
+fn make_func_type(args: &[u8], result: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.push(0x60); // function signature
+    write_leb128(args.len() as i128, &mut payload);
+    payload.extend(args);
+    write_leb128(result.len() as i128, &mut payload);
+    payload.extend(result);
+    payload
+}
+
+#[test]
+fn test_make_func_type() {
+    let f1 = make_func_type(&[0x7f], &[]);
+    assert_eq!(f1, &[0x60, 0x01, 0x7f, 0x00]);
+    let f2 = make_func_type(&[], &[0x7f]);
+    assert_eq!(f2, &[0x60, 0x00, 0x01, 0x7f]);
+    let f3 = make_func_type(&[0x7f, 0x7f], &[0x7f]);
+    assert_eq!(f3, &[0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f]);
+    let type_section = make_section::<SIGNATURE_TYPE>(&[ &f1, &f2, &f3]);
+    assert_eq!(type_section,
+            [0x01, 0x0f, 0x03, 0x60, 0x01, 0x7f, 0x00,
+                                  0x60, 0x00, 0x01, 0x7f,
+                                  0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,]);
+}
+
+pub fn generate_wasm(expr: &impl ToWasm, bindings: &Bindings) -> Vec<u8> {
     let mut wasm = vec![
-        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0e, 0x03, 0x60,
-        0x01, 0x7f, 0x00, 0x60, 0x00, 0x01, 0x7f, 0x60, 0x01, 0x7f, 0x01, 0x7f,
-        0x02, 0x0c, 0x01, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x03, 0x6c, 0x6f, 0x67,
-        0x00, 0x00, 0x03, 0x03, 0x02, 0x01, 0x02, 0x07, 0x08, 0x01, 0x04, 0x63,
-        0x61, 0x6c, 0x63, 0x00, 0x01, 0x0a ];
+        0x00, 0x61, 0x73, 0x6d, // asm
+        0x01, 0x00, 0x00, 0x00, // version
+    ];
+    wasm.extend(&make_section::<SIGNATURE_TYPE>(&[
+        &make_func_type(&[0x7f], &[]),
+        &make_func_type(&[], &[0x7f]),
+        &make_func_type(&[0x7f, 0x7f], &[0x7f]),
+    ]));
+    wasm.extend(&[
+        0x02, // import section signature
+        0x0c, // 12B payload
+        0x01, // one import
+        0x04, // Module name: 4 chars
+            0x68, 0x6f, 0x73, 0x74, // = "host"
+        0x03, // Field name: 3 chars
+            0x6c, 0x6f, 0x67, // == log
+        0x00, // Import kind: function
+        0x00, // Type kind index: 0: i32 -> ()
+
+        0x03, // function section signarure
+        0x03, // 3B payload
+        0x02, // 2 functions:
+            0x01, // Type kind index: 1: () -> i32
+            0x02, // TYpe kind index: 2: i32, i32 -> i32
+
+        0x07, // export section signature
+        0x08, // 8 byte payload
+        0x01, // one export
+        0x04, // Field name: 4 chars
+            0x63, 0x61, 0x6c, 0x63, // = "main"
+        0x00, // Export kind: function
+        0x01, // Function index: 1, () -> i32
+    ]);
 
     let calc = make_func(&[
             0x00, // localdeclcount(0)
             0x41, 0xfb, 0x00, // i32.const 123
             0x10, 0x00, // call function index=0 (host_log)
             0x41, 0x07, // i32.const 7
+            0x41, 0x09, // i32.const 9
             0x10, 0x02, // call function index=2 (eval_expr)
             0x0f, // return
             0x0b, // end
@@ -280,13 +357,13 @@ pub fn generate_wasm(expr: &Expr) -> Vec<u8> {
 
     let mut body = Vec::new();
     body.push(0x00); // no local decl count
-    body.extend(expr.to_wasm());
+    body.extend(expr.to_wasm(bindings));
     body.extend(&[0x0f, // return
                   0x0b, // end
                   ]);
     let eval_expr = make_func(&body);
 
-    let code_section = make_code_section(&[ &calc, &eval_expr ]);
+    let code_section = make_section::<SIGNATURE_CODE>(&[ &calc, &eval_expr ]);
     wasm.extend(&code_section);
     wasm
 }
