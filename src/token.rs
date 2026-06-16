@@ -3,10 +3,10 @@ use std::str::Chars;
 
 #[derive(Debug,PartialEq)]
 pub enum Token {
-    Number(i32),
-    Operator(char),
-    Open(char),
     Close(char),
+    Number(i32),
+    Open(char),
+    Operator(char),
     Variable(String),
 }
 

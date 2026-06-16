@@ -47,7 +47,8 @@ fn eval_wat(expr: &Expr) -> Result<i32> {
 }
 
 fn eval_wasm(expr: &Expr) -> Result<i32>{
-    let bindings: &Bindings = &[ "x".to_string(), "yy".to_string() ];
+    let vars = vec![ "x".to_string(), "yy".to_string() ];
+    let bindings: &Bindings = &Bindings { vars };
     let wasm = generate_wasm(expr, bindings);
     let engine = Engine::default();
     let module = Module::new(&engine, wasm)?;
