@@ -1,7 +1,7 @@
 mod ast;
 mod token;
 
-use crate::ast::{Expr, add_fluff, Bindings, generate_wasm};
+use crate::ast::{Expr, Bindings, generate_wat, generate_wasm};
 use crate::token::Tokenizer;
 
 use wasmtime::{Caller, Engine, Func, Instance, Module, Result, Store};
@@ -10,9 +10,12 @@ use wasmtime::{Caller, Engine, Func, Instance, Module, Result, Store};
 fn test_eval() {
     fn evaluate(s: &str) -> i32 {
         let expr = Expr::parse(&mut Tokenizer::from_str(s).peekable());
+        let mut bindings = Bindings::new();
+        bindings.add_var("x", 7);
+        bindings.add_var("yy", 9);
         eprintln!("{}", expr.to_wat());
         // eval_wat(&expr).expect("Failed to evaluate")
-        eval_wasm(&expr).expect("Failed to evaluate")
+        eval_wasm(&expr, &bindings).expect("Failed to evaluate")
     }
     assert_eq!(evaluate("1+2+3+4+5+6+7+8+9"), 45);
     assert_eq!(evaluate("1*2*3*4*5*6*7*8*9"), 362880);
@@ -25,9 +28,8 @@ fn test_eval() {
     assert_eq!(evaluate("100/3"), 33);
 }
 
-fn eval_wat(expr: &Expr) -> Result<i32> {
-    let wat = add_fluff(&expr.to_wat()); // wrap raw WAT in Module
-
+fn eval_wat(expr: &Expr, bindings: &Bindings) -> Result<i32> {
+    let wat = generate_wat(&expr.to_wat(), bindings); // wrap raw WAT in Module
     let engine = Engine::default();
     let module = Module::new(&engine, wat)?;
 
@@ -46,11 +48,8 @@ fn eval_wat(expr: &Expr) -> Result<i32> {
     calc.call(&mut store, ())
 }
 
-fn eval_wasm(expr: &Expr) -> Result<i32>{
-    let mut bindings = Bindings::new();
-    bindings.add_var("x");
-    bindings.add_var("yy");
-    let wasm = generate_wasm(expr, &bindings);
+fn eval_wasm(expr: &Expr, bindings: &Bindings) -> Result<i32> {
+    let wasm = generate_wasm(expr, bindings);
     let engine = Engine::default();
     let module = Module::new(&engine, wasm)?;
 
@@ -71,6 +70,9 @@ fn eval_wasm(expr: &Expr) -> Result<i32>{
 
 fn main() -> Result<()> {
     let args = std::env::args();
+    let mut bindings = Bindings::new();
+    bindings.add_var("x", 7);
+    bindings.add_var("yy", 42);
     for arg in args.skip(1) {
         println!();
         println!("Expression:\t{arg}");
@@ -78,9 +80,9 @@ fn main() -> Result<()> {
         println!("Tokenized:\t{tokens:?}");
         let expr = Expr::parse(&mut tokens.into_iter().peekable());
         println!("WASM Text:\t{}", expr.to_wat().replace('\n', "\n\t\t"));
-        let result = eval_wat(&expr)?;
+        let result = eval_wat(&expr, &bindings)?;
         println!("Text result:\t{result}");
-        let result = eval_wasm(&expr)?;
+        let result = eval_wasm(&expr, &bindings)?;
         println!("Binary result:\t{result}");
     }
 

@@ -31,7 +31,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 '0'..='9' => {
                     let mut v = c.to_digit(10).unwrap() as i32;
                     while let Some(&c) = self.chars.peek() {
-                        if !('0'..='9').contains(&c) { break; }
+                        if !c.is_ascii_digit() { break; }
                         self.chars.next();
                         v = v * 10 + c.to_digit(10).unwrap() as i32;
                     }
@@ -40,7 +40,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                 'a'..='z' => {
                     let mut v = c.to_string();
                     while let Some(&c) = self.chars.peek() {
-                        if !('a'..='z').contains(&c) { break; }
+                        if !c.is_ascii_lowercase() { break; }
                         self.chars.next();
                         v += &c.to_string();
                     }

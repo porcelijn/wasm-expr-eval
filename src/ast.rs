@@ -5,7 +5,7 @@ use crate::token::Tokenizer;
 use std::iter::Peekable;
 
 pub struct Bindings {
-    vars: Vec<String>,
+    vars: Vec<(String, i32)>,
 }
 
 impl Bindings {
@@ -13,12 +13,17 @@ impl Bindings {
         Self { vars: Vec::new(), }
     }
 
-    pub fn add_var(&mut self, var: &str) {
-        self.vars.push(var.into());
+    pub fn add_var(&mut self, var: &str, value: i32) {
+        self.vars.push((var.into(), value));
     }
 
     fn get_index(&self, var: &str) -> Option<usize> {
-        self.vars.iter().position(|v| v == var)
+        self.vars.iter().position(|(v,_)| v == var)
+    }
+
+    fn get_value(&self, var: &str) -> Option<i32> {
+        let tuple = self.vars.iter().find(|(v,_)| v == var)?;
+        Some(tuple.1)
     }
 }
 
@@ -180,7 +185,7 @@ impl ToWasm for Factor {
             },
             Self::Param(p) => {
                 let mut out = vec![0x20]; // local.get
-                if let Some(index) = bindings.get_index(&p) {
+                if let Some(index) = bindings.get_index(p) {
                     write_leb128(index as i128, &mut out);
                 } else {
                     panic!("Unknown binding for local '{p}'");
@@ -255,24 +260,24 @@ fn test_parse() {
     assert_eq!(compile("variable"), "local.get $variable");
 }
 
-pub fn add_fluff(expr_wat: &str) -> String {
-    let mut wat = r#"
+pub fn generate_wat(expr_wat: &str, bindings: &Bindings) -> String {
+    let mut wat = format!(r#"
         (module
             (import "host" "log" (func $host_log (param i32)))
             (func (export "calc") (result i32)
                 i32.const 123 ;; <-- Closure `param`
                 call $host_log
 
-                i32.const 7 ;; <-- WASM function param `$x`
-                i32.const 9 ;; <-- WASM function param `$yy`
+                i32.const {} ;; <-- WASM function param `$x`
+                i32.const {} ;; <-- WASM function param `$yy`
                 call $eval_expr
                 return)
-    "#.to_string();
+    "#, bindings.get_value("x").unwrap(), bindings.get_value("yy").unwrap());
 
     wat.push_str("(func $eval_expr (param $x i32) (param $yy i32) (result i32)");
     wat.push_str(expr_wat);
     wat.push_str(" return)");
-    wat.push_str(")");
+    wat.push(')');
     wat
 }
 
@@ -365,8 +370,8 @@ pub fn generate_wasm(expr: &impl ToWasm, bindings: &Bindings) -> Vec<u8> {
             0x00, // localdeclcount(0)
             0x41, 0xfb, 0x00, // i32.const 123
             0x10, 0x00, // call function index=0 (host_log)
-            0x41, 0x07, // i32.const 7
-            0x41, 0x09, // i32.const 9
+            0x41, bindings.get_value("x").unwrap() as u8, // i32.const 7
+            0x41, bindings.get_value("yy").unwrap() as u8, // i32.const 9
             0x10, 0x02, // call function index=2 (eval_expr)
             0x0f, // return
             0x0b, // end
