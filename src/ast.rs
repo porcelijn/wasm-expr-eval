@@ -5,7 +5,21 @@ use crate::token::Tokenizer;
 use std::iter::Peekable;
 
 pub struct Bindings {
-    pub vars: Vec<String>,
+    vars: Vec<String>,
+}
+
+impl Bindings {
+    pub fn new() -> Self {
+        Self { vars: Vec::new(), }
+    }
+
+    pub fn add_var(&mut self, var: &str) {
+        self.vars.push(var.into());
+    }
+
+    fn get_index(&self, var: &str) -> Option<usize> {
+        self.vars.iter().position(|v| v == var)
+    }
 }
 
 pub type Wat = String;
@@ -166,7 +180,7 @@ impl ToWasm for Factor {
             },
             Self::Param(p) => {
                 let mut out = vec![0x20]; // local.get
-                if let Some(index) = bindings.vars.iter().position(|b| b == p) {
+                if let Some(index) = bindings.get_index(&p) {
                     write_leb128(index as i128, &mut out);
                 } else {
                     panic!("Unknown binding for local '{p}'");
