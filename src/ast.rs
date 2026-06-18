@@ -2,28 +2,29 @@ use crate::token::Token;
 #[cfg(test)]
 use crate::token::Tokenizer;
 
+use std::collections::HashMap;
 use std::iter::Peekable;
 
 pub struct Bindings {
-    vars: Vec<(String, i32)>,
+    vars: HashMap<String, (i32, usize)>,
 }
 
 impl Bindings {
     pub fn new() -> Self {
-        Self { vars: Vec::new(), }
+        Self { vars: HashMap::new(), }
     }
 
     pub fn add_var(&mut self, var: &str, value: i32) {
-        self.vars.push((var.into(), value));
+        let index = self.vars.len();
+        self.vars.insert(var.into(), (value, index));
     }
 
     fn get_index(&self, var: &str) -> Option<usize> {
-        self.vars.iter().position(|(v,_)| v == var)
+        self.vars.get(var).map(|&v| v.1)
     }
 
     fn get_value(&self, var: &str) -> Option<i32> {
-        let tuple = self.vars.iter().find(|(v,_)| v == var)?;
-        Some(tuple.1)
+        self.vars.get(var).map(|&v| v.0)
     }
 }
 
